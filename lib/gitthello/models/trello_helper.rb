@@ -16,8 +16,8 @@ module Gitthello
       @list_todo    = @board.lists.select { |a| a.name == 'Next Up' }.first
       raise "Missing trello To Do list" if list_todo.nil?
 
-      @list_backlog = @board.lists.select { |a| a.name == 'Backlog' }.first
-      raise "Missing trello Backlog list" if list_backlog.nil?
+      # @list_backlog = @board.lists.select { |a| a.name == 'Backlog' }.first
+      # raise "Missing trello Backlog list" if list_backlog.nil?
 
       @list_done    = @board.lists.select { |a| a.name == 'Done' }.first
       raise "Missing trello Done list" if list_done.nil?
@@ -44,6 +44,10 @@ module Gitthello
 
     def create_todo_card(name, desc, issue_url, is_pull_request)
       create_card_in_list(name, desc, issue_url, list_todo.id, is_pull_request)
+    end
+
+    def create_bug_card(name, desc, issue_url, is_pull_request, is_bug)
+      create_card_in_list(name, desc, issue_url, list_backlog.id, false, is_bug)
     end
 
     def create_backlog_card(name, desc, issue_url)
@@ -94,7 +98,9 @@ module Gitthello
 
     def new_cards_to_github(github_helper)
       all_cards_not_at_github.each do |card|
-        issue = github_helper.create_issue(card.name, card.desc)
+        is_bug = card.labels.any? { |a| a.name == "Bug" }
+
+        issue = github_helper.create_issue(card.name, card.desc, is_bug)
         github_helper.add_trello_url(issue, card.url)
         card.add_attachment(issue.html_url, "github")
       end
@@ -121,11 +127,12 @@ module Gitthello
       Trello::Board.all.select { |b| b.name == @board_name }.first
     end
 
-    def create_card_in_list(name, desc, url, list_id, is_pull_request = false)
+    def create_card_in_list(name, desc, url, list_id, is_pull_request = false, is_bug = false)
       Trello::Card.
         create(:name => name, :list_id => list_id, :desc => desc).tap do |card|
         card.add_attachment(url, "github")
         card.add_label("purple") if is_pull_request
+        card.add_label("red") if is_bug
       end
     end
 

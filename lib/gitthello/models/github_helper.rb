@@ -1,6 +1,6 @@
 module Gitthello
   class GithubHelper
-    attr_reader :issue_bucket, :backlog_bucket
+    attr_reader :issue_bucket, :bug_bucket, :backlog_bucket
 
     def initialize(oauth_token, repo_for_new_cards, repos_to_consider)
       @github            = Github.new(:oauth_token => oauth_token)
@@ -8,9 +8,12 @@ module Gitthello
       @repos_to_consider = repos_to_consider
     end
 
-    def create_issue(title, desc)
+    def create_issue(title, desc, is_bug = false)
+      labels = []
+      labels << 'bug' if is_bug
+
       @github.issues.
-        create( :user => @user, :repo => @repo, :title => title, :body => desc)
+        create( :user => @user, :repo => @repo, :title => title, :body => desc, labels: labels)
     end
 
     def issue_closed?(user, repo, number)
@@ -41,24 +44,26 @@ module Gitthello
     end
 
     def retrieve_issues
-      @issue_bucket, @backlog_bucket = [], []
+      @issue_bucket, @bug_bucket, @backlog_bucket = [], [], []
 
-      @repos_to_consider.split(/,/).map { |a| a.split(/\//)}.
-        each do |repo_owner,repo_name|
+      @repos_to_consider.split(/,/).map { |a| a.split(/\//)}.each do |repo_owner,repo_name|
         puts "Checking #{repo_owner}/#{repo_name}"
-        repeatthis do
+        issues = repeatthis do
           @github.issues.
             list(:user => repo_owner, :repo => repo_name, :state => "open",
                  :per_page => 100).
             sort_by { |a| a.number.to_i }
-        end.each do |issue|
-          if issue["labels"].any? { |a| a["name"] == "backlog" }
-            bucket = @backlog_bucket
+        end
+
+        issues.each do |issue|
+          # if issue["labels"].any? { |a| a["name"] == "backlog" }
+          #   bucket = @backlog_bucket
+          if issue["labels"].any? { |a| a["name"].downcase == "bug" }
+            bucket = @bug_bucket
           else
             bucket = @issue_bucket
           end
           bucket << [repo_name,issue]
-
         end
       end
 
@@ -70,21 +75,29 @@ module Gitthello
       issue_bucket.each do |repo_name, issue|
         next if trello_helper.has_card?(issue)
         prefix = repo_name.sub(/^mops./,'').capitalize
-        card = trello_helper.
-          create_todo_card("%s: %s" % [prefix,issue["title"]],
-                           issue["body"], issue["html_url"],
-                           issue.keys.include?("pull_request"))
+        card = trello_helper.create_todo_card("%s: %s" % [prefix,issue["title"]],
+                                              issue["body"], issue["html_url"],
+                                              issue.keys.include?("pull_request"))
         add_trello_url(issue, card.url)
       end
 
-      backlog_bucket.each do |repo_name, issue|
+      bug_bucket.each do |repo_name, issue|
         next if trello_helper.has_card?(issue)
         prefix = repo_name.sub(/^mops./,'').capitalize
-        card = trello_helper.
-          create_backlog_card("%s: %s" % [prefix,issue["title"]],
-                              issue["body"], issue["html_url"])
+        card = trello_helper.create_bug_card("%s: %s" % [prefix,issue["title"]],
+                                              issue["body"], issue["html_url"],
+                                              false, true)
         add_trello_url(issue, card.url)
       end
+
+      # backlog_bucket.each do |repo_name, issue|
+      #   next if trello_helper.has_card?(issue)
+      #   prefix = repo_name.sub(/^mops./,'').capitalize
+      #   card = trello_helper.
+      #     create_backlog_card("%s: %s" % [prefix,issue["title"]],
+      #                         issue["body"], issue["html_url"])
+      #   add_trello_url(issue, card.url)
+      # end
     end
 
     private
