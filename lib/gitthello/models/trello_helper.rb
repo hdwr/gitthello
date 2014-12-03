@@ -13,7 +13,7 @@ module Gitthello
     def setup
       @board = retrieve_board
 
-      @list_todo    = @board.lists.select { |a| a.name == 'To Do' }.first
+      @list_todo    = @board.lists.select { |a| a.name == 'Next Up' }.first
       raise "Missing trello To Do list" if list_todo.nil?
 
       @list_backlog = @board.lists.select { |a| a.name == 'Backlog' }.first
